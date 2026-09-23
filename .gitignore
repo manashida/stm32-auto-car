@@ -1,0 +1,27 @@
+build/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.ninja
+.ninja_*
+
+# Build outputs
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.o
+*.obj
+*.d
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.tmp
+Thumbs.db
+Desktop.ini
