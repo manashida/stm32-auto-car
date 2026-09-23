@@ -1,0 +1,102 @@
+name: Firmware Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [Debug, Release]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRESET: ${{ matrix.preset }}
+      ARM_TOOLCHAIN_VERSION: 14.2.rel1
+      ARM_TOOLCHAIN_SHA256: 62a63b981fe391a9cbad7ef51b17e49aeaa3e7b0d029b36ca1e9c3b2a9b78823
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install build tools
+        run: |
+          mkdir -p ci-logs
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build
+          archive="arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-x86_64-arm-none-eabi.tar.xz"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 600 \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          printf '%s  %s\n' "$ARM_TOOLCHAIN_SHA256" "${RUNNER_TEMP}/${archive}" | sha256sum --check
+          tar -xJf "${RUNNER_TEMP}/${archive}" -C "$RUNNER_TEMP"
+          echo "${RUNNER_TEMP}/arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-x86_64-arm-none-eabi/bin" >> "$GITHUB_PATH"
+
+      - name: Record environment
+        run: |
+          {
+            git rev-parse HEAD
+            uname -a
+            cmake --version
+            ninja --version
+            arm-none-eabi-gcc --version
+          } | tee ci-logs/environment.txt
+
+      - name: Configure
+        run: cmake --preset "$PRESET" 2>&1 | tee ci-logs/configure.log
+
+      - name: Compile
+        run: cmake --build --preset "$PRESET" --parallel 2 2>&1 | tee ci-logs/build.log
+
+      - name: Export firmware and memory report
+        run: |
+          firmware="build/${PRESET}/auto_car.elf"
+          test -s "$firmware"
+          arm-none-eabi-objcopy -O ihex "$firmware" "build/${PRESET}/auto_car.hex"
+          arm-none-eabi-objcopy -O binary "$firmware" "build/${PRESET}/auto_car.bin"
+          arm-none-eabi-size "$firmware" | tee ci-logs/size.txt
+          {
+            echo "### ${PRESET} firmware"
+            echo 'Linker limits: 64 KiB Flash, 20 KiB RAM. Overflow fails the build.'
+            echo '```text'
+            cat ci-logs/size.txt
+            grep -A 2 'Memory region' ci-logs/build.log || true
+            echo '```'
+            echo 'Compile check only; hardware operation has not been tested by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firmware-${{ matrix.preset }}-${{ github.sha }}
+          path: |
+            build/${{ matrix.preset }}/auto_car.elf
+            build/${{ matrix.preset }}/auto_car.hex
+            build/${{ matrix.preset }}/auto_car.bin
+            build/${{ matrix.preset }}/auto_car.map
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-logs-${{ matrix.preset }}-${{ github.sha }}
+          path: ci-logs/
+          if-no-files-found: warn
+          retention-days: 14

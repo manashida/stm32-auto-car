@@ -1,5 +1,7 @@
 # STM32 智能小车控制系统
 
+[![Firmware Build](https://github.com/manashida/stm32-auto-car/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/manashida/stm32-auto-car/actions/workflows/build.yml)
+
 基于 **STM32F103C8Tx** 的智能小车控制固件。项目采用 STM32CubeMX 管理基础时钟和外设配置，使用 CMake 与 Arm GNU Toolchain 构建。应用层按功能拆分为独立模块，主循环以 `HAL_GetTick()` 时间片和状态机调度为主；OLED 的 I2C 发送、串口文本输出等仍使用阻塞式 HAL 接口，部分底层时序使用短时忙等待，并非全程非阻塞。
 
 ## 项目能力
@@ -95,6 +97,14 @@ cmake --build --preset Debug
 
 生成的 ELF 文件位于 `build/Debug/`，构建产物不会被 Git 跟踪。
 
+### 自动编译检查
+
+仓库通过 [GitHub Actions](https://github.com/manashida/stm32-auto-car/actions/workflows/build.yml) 在每次推送、Pull Request 或手动触发时独立编译 Debug 和 Release。每个任务使用干净的 Ubuntu 24.04 环境，下载并校验 Arm GNU Toolchain **14.2.rel1**，运行与本地相同的 CMake presets；不使用本地构建目录或编译缓存。
+
+任务日志记录 CMake、Ninja 和编译器版本、编译告警以及内存占用。链接脚本限制为 64 KiB Flash、20 KiB RAM，超限会导致构建失败。在运行详情的 Artifacts 中可下载成功构建的 ELF、HEX、BIN、MAP 和编译日志，保留 14 天。编译失败时仍尝试保存已生成的日志。
+
+绿色状态表示对应提交通过云端编译，不代表实机功能测试通过。首页徽章展示 `main` 分支的构建状态。
+
 ### 烧录
 
 安装 STM32CubeProgrammer，并将 `STM32_Programmer_CLI` 加入 `PATH`，然后重新配置工程以生成 `flash` 目标：
@@ -108,7 +118,7 @@ cmake --build build/Debug --target flash
 
 ## 使用与安全
 
-本仓库只提供源代码，不包含预编译固件。电机、舵机和传感器的供电、地线、电平转换与标定会直接影响运行结果。
+仓库源码目录不包含预编译固件；自动编译生成的固件可从对应 Actions 运行的 Artifacts 下载。电机、舵机和传感器的供电、地线、电平转换与标定会直接影响运行结果。
 
 首次上电时应抬空驱动轮，使用独立电源为电机和舵机供电，并与 STM32 共地。请在受控场地完成循迹、距离、重量和 UWB 参数标定后再进行载重运行。
 
