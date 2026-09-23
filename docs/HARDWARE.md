@@ -2,6 +2,20 @@
 
 本文档与当前固件源码对应。修改模块型号、接线或 `auto_car.ioc` 后，应同步更新本文档并重新完成基础功能验证。
 
+## 配置来源
+
+`auto_car.ioc` 记录基础时钟、TIM1/TIM2、I2C1、USART1/USART2 和部分 GPIO 配置。当前运行配置还包括应用模块中的手动初始化，不能仅凭 `.ioc` 还原全部硬件设置：
+
+| 配置位置 | 运行时配置 |
+| --- | --- |
+| `Core/Src/encoder.c` | TIM3 左编码器、PB12 右编码器 EXTI、PB13 输入及中断优先级 |
+| `Core/Src/hx711.c` | PB14/PB15 称重接口 GPIO |
+| `Core/Src/ws2812.c` | PA12 灯带数据 GPIO 与发送时序 |
+| `Core/Src/app_mode_task.c` | PC14/PC15 按键上拉输入与消抖 |
+| `Core/Src/buzzer.c` | PA11 蜂鸣器输出及低电平有效逻辑 |
+
+重新生成 CubeMX 工程后，应对照上述模块及 `Core/Src` 下的外设、中断代码复核。源码中的配置记录不等同于实机接线验证结果。
+
 ## 硬件清单
 
 | 类别 | 模块或器件 | 用途 |
@@ -12,7 +26,7 @@
 | 无线控制 | HC-05、HC-06 或串口兼容蓝牙模块 | 手动控制与调试 |
 | 距离检测 | HC-SR04 或兼容模块 | 前向障碍物检测 |
 | 称重 | HX711 与称重传感器 | 装载/卸货判断 |
-| 定位跟随 | UART 输出距离和角度数据的 UWB 模块 | 跟随模式输入 |
+| 定位跟随 | 输出帧格式与 `uwb_follow.c` 匹配的 UWB 模块 | 当前解析器支持 GC-P2304 格式与项目自定义 SIMPLE 格式；任意 UART 测距模块不一定兼容 |
 | 执行器 | 双直流减速电机、卸货舵机 | 行驶与卸货 |
 | 循迹 | 4 路数字循迹传感器 | 路径检测 |
 | 指示 | WS2812 RGB 灯带（当前为 10 颗）和有源蜂鸣器 | 状态与告警 |
@@ -21,14 +35,14 @@
 
 | 功能 | STM32 引脚 | 接线目标 | 说明 |
 | --- | --- | --- | --- |
-| 左电机 PWM | PA0 / TIM2_CH1 | TB6612 PWMA | PWM 占空比 0 至 1000 |
-| 右电机 PWM | PA1 / TIM2_CH2 | TB6612 PWMB | PWM 占空比 0 至 1000 |
+| 左电机 PWM | PA0 / TIM2_CH1 | TB6612 PWMA | 1 kHz；比较值 0～1000 对应占空比 0～100% |
+| 右电机 PWM | PA1 / TIM2_CH2 | TB6612 PWMB | 1 kHz；比较值 0～1000 对应占空比 0～100% |
 | 左电机方向 | PB0, PB1 | TB6612 AIN1, AIN2 | 电机正反转 |
 | 右电机方向 | PB10, PB11 | TB6612 BIN1, BIN2 | 电机正反转 |
 | 舵机 PWM | PA8 / TIM1_CH1 | 舵机信号线 | 卸货舵机，50 Hz |
 | OLED SCL | PB6 / I2C1_SCL | OLED SCL | I2C 总线 |
 | OLED SDA | PB7 / I2C1_SDA | OLED SDA | I2C 总线 |
-| 蓝牙 TX/RX | PA10 / PA9, USART1 | 模块 TXD / RXD | 模块 TXD 接 PA10；模块 RXD 接 PA9 |
+| 蓝牙 TX/RX | PA9 / PA10, USART1 | 模块 RXD / TXD | 模块 TXD 接 PA10；模块 RXD 接 PA9 |
 | UWB TX/RX | PA2 / PA3, USART2 | UWB RXD / TXD | 模块 TXD 接 PA3；模块 RXD 接 PA2 |
 | 超声波 TRIG | PA4 | HC-SR04 TRIG | 前向测距触发 |
 | 超声波 ECHO | PA5 | HC-SR04 ECHO | 必须经电平转换或分压 |
@@ -42,6 +56,12 @@
 | 模式按键 | PC14 | 模式切换按键 | 上拉输入，按下接地 |
 | 手动卸货按键 | PC15 | 卸货按键 | 上拉输入，按下接地 |
 | SWDIO / SWCLK | PA13 / PA14 | 调试器 | 用于下载和调试 |
+
+## 串口与控制约定
+
+USART1（蓝牙）和 USART2（UWB）在 `Core/Src/usart.c` 中均配置为 **115200 bit/s、8N1、无硬件流控**。应核对模块当前串口设置，不应假定其出厂波特率与固件一致。
+
+蓝牙使用单字符 ASCII 指令，运动控制需先通过 PC14 切换到蓝牙控制模式。方向指令有效期为 800 ms，持续行驶时需周期性重发，松开控制键时发送 `S`；完整指令与急停说明见 [README](../README.md)。USART2 接收 UWB 二进制帧，其字段和校验必须匹配 `uwb_follow.c`；协议开关和目标标签过滤配置见 `Core/Inc/app_config.h`。
 
 ## 电源与电气要求
 
