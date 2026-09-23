@@ -25,3 +25,13 @@ compile_commands.json
 *.tmp
 Thumbs.db
 Desktop.ini
+
+# Local reports, design drafts, and notes not part of the public source release
+AGENTS.md
+ai_redesign_draft/
+atopile_design/
+image/
+tmp/
+新增模块/
+电路设计报告/
+*.md
