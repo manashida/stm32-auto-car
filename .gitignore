@@ -36,3 +36,4 @@ tmp/
 电路设计报告/
 *.md
 !README.md
+!docs/HARDWARE.md
